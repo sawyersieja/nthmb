@@ -4,6 +4,11 @@ import { BasicEvaluator } from "./evaluator.js";
 import { StubPlanner } from "./planner.js";
 import { Worker } from "./worker.js";
 import { planSchema, resultsSchema, verdictSchema } from "./schemas/artifacts.js";
+import { exec as execCb } from "node:child_process";
+import { cwd } from "node:process";
+import { promisify } from "node:util";
+
+const exec = promisify(execCb);
 
 export interface RunOptions {
   goal: string;
@@ -11,6 +16,29 @@ export interface RunOptions {
   dryRun: boolean;
   runId: string;
   shouldStop?: () => boolean;
+}
+
+async function tryExec(command: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await exec(command);
+    const value = stdout.trimEnd();
+    return value.length > 0 ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeContextSnapshot(runId: string, iteration: number): Promise<void> {
+  const branch = await tryExec("git branch --show-current");
+  const gitStatusPorcelain = await tryExec("git status --porcelain");
+  await writeArtifact(runId, iteration, "context.json", {
+    runId,
+    iteration,
+    createdAt: new Date().toISOString(),
+    cwd: cwd(),
+    branch,
+    gitStatusPorcelain
+  });
 }
 
 export async function runAgent(options: RunOptions): Promise<void> {
@@ -41,6 +69,9 @@ export async function runAgent(options: RunOptions): Promise<void> {
       upsertRun(options.runId, options.goal, verdict.status);
       return;
     }
+
+    await writeContextSnapshot(options.runId, iteration);
+
     const plan = await planner.plan({ runId: options.runId, iteration, goal: options.goal });
     planSchema.parse(plan);
     await writeArtifact(options.runId, iteration, "plan.json", plan);

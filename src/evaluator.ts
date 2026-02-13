@@ -6,28 +6,31 @@ export interface Evaluator {
 
 export class BasicEvaluator implements Evaluator {
   evaluate(_goal: string, plan: Plan, results: Results): Verdict {
-    const allOk = results.taskResults.every((t) => t.ok);
-    const allNoop = plan.tasks.every((t) => t.type === "noop");
-    const failedCount = results.taskResults.filter((t) => !t.ok).length;
+    const hasFailures = results.taskResults.some((t) => !t.ok);
+    const hasVerify = plan.tasks.some((task) => task.type === "verify");
+    const verifySucceeded = results.taskResults.some((result) => {
+      const task = plan.tasks.find((candidate) => candidate.id === result.taskId);
+      return task?.type === "verify" && result.ok;
+    });
 
-    if (allOk && allNoop) {
-      return {
-        runId: plan.runId,
-        iteration: plan.iteration,
-        createdAt: new Date().toISOString(),
-        status: "done",
-        rationale: "Noop plan succeeded; work is complete"
-      };
-    }
-
-    if (failedCount >= 2) {
+    if (hasFailures) {
       return {
         runId: plan.runId,
         iteration: plan.iteration,
         createdAt: new Date().toISOString(),
         status: "failed",
-        rationale: "Repeated task failures detected",
-        next: { stopReason: "repeated-failures" }
+        rationale: "At least one task failed",
+        next: { stopReason: "task-failed" }
+      };
+    }
+
+    if (hasVerify && verifySucceeded) {
+      return {
+        runId: plan.runId,
+        iteration: plan.iteration,
+        createdAt: new Date().toISOString(),
+        status: "done",
+        rationale: "Verify task succeeded with no task failures"
       };
     }
 
@@ -36,8 +39,7 @@ export class BasicEvaluator implements Evaluator {
       iteration: plan.iteration,
       createdAt: new Date().toISOString(),
       status: "continue",
-      rationale: "Tasks completed but more iterations may be needed",
-      next: { suggestedTasks: ["Refine next step"] }
+      rationale: "No task failures; continue iteration"
     };
   }
 }

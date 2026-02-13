@@ -4,7 +4,18 @@ const isoDate = z.string().datetime();
 
 export const taskSchema = z.object({
   id: z.string(),
-  type: z.enum(["noop", "write_file", "edit_file", "shell", "db"]),
+  type: z.enum([
+    "noop",
+    "write_file",
+    "edit_file",
+    "shell",
+    "db",
+    "read_file",
+    "list_files",
+    "grep",
+    "apply_patch",
+    "verify"
+  ]),
   title: z.string(),
   rationale: z.string(),
   inputs: z.record(z.unknown())
@@ -15,7 +26,7 @@ export const planSchema = z.object({
   iteration: z.number().int().nonnegative(),
   createdAt: isoDate,
   goal: z.string(),
-  tasks: z.array(taskSchema)
+  tasks: z.array(taskSchema).max(3)
 });
 
 export const taskResultSchema = z.object({
